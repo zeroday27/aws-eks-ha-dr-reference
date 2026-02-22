@@ -1,0 +1,353 @@
+# =============================================================================
+# EKS Workload Placement
+# This file codifies that all containerized services run on EKS.
+# Critical domain services are isolated from stateless API services via
+# PriorityClasses, Karpenter NodePools, and taints/tolerations.
+# =============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hotel-core
+  namespace: hotel
+  labels:
+    app: hotel-core
+    workload-tier: critical
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: hotel-core
+  template:
+    metadata:
+      labels:
+        app: hotel-core
+        workload-tier: critical
+    spec:
+      serviceAccountName: hotel-app
+      priorityClassName: critical-domain
+      tolerations:
+        - key: workload-tier
+          operator: Equal
+          value: critical
+          effect: NoSchedule
+      nodeSelector:
+        nodepool: critical
+      containers:
+        - name: app
+          image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/hotel-core:latest
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loyalty-account
+  namespace: hotel
+  labels:
+    app: loyalty-account
+    workload-tier: critical
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: loyalty-account
+  template:
+    metadata:
+      labels:
+        app: loyalty-account
+        workload-tier: critical
+    spec:
+      serviceAccountName: hotel-app
+      priorityClassName: critical-domain
+      tolerations:
+        - key: workload-tier
+          operator: Equal
+          value: critical
+          effect: NoSchedule
+      nodeSelector:
+        nodepool: critical
+      containers:
+        - name: app
+          image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/loyalty-account:latest
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reservation-orchestrator
+  namespace: hotel
+  labels:
+    app: reservation-orchestrator
+    workload-tier: critical
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: reservation-orchestrator
+  template:
+    metadata:
+      labels:
+        app: reservation-orchestrator
+        workload-tier: critical
+    spec:
+      serviceAccountName: hotel-app
+      priorityClassName: critical-domain
+      tolerations:
+        - key: workload-tier
+          operator: Equal
+          value: critical
+          effect: NoSchedule
+      nodeSelector:
+        nodepool: critical
+      containers:
+        - name: app
+          image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/reservation-orchestrator:latest
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-availability
+  namespace: hotel
+  labels:
+    app: inventory-availability
+    workload-tier: critical
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: inventory-availability
+  template:
+    metadata:
+      labels:
+        app: inventory-availability
+        workload-tier: critical
+    spec:
+      serviceAccountName: hotel-app
+      priorityClassName: critical-domain
+      tolerations:
+        - key: workload-tier
+          operator: Equal
+          value: critical
+          effect: NoSchedule
+      nodeSelector:
+        nodepool: critical
+      containers:
+        - name: app
+          image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/inventory-availability:latest
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pricing-rules-engine
+  namespace: hotel
+  labels:
+    app: pricing-rules-engine
+    workload-tier: critical
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: pricing-rules-engine
+  template:
+    metadata:
+      labels:
+        app: pricing-rules-engine
+        workload-tier: critical
+    spec:
+      serviceAccountName: hotel-app
+      priorityClassName: critical-domain
+      tolerations:
+        - key: workload-tier
+          operator: Equal
+          value: critical
+          effect: NoSchedule
+      nodeSelector:
+        nodepool: critical
+      containers:
+        - name: app
+          image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/pricing-rules-engine:latest
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: public-api-bff
+  namespace: hotel
+  labels:
+    app: public-api-bff
+    workload-tier: stateless
+spec:
+  replicas: 6
+  selector:
+    matchLabels:
+      app: public-api-bff
+  template:
+    metadata:
+      labels:
+        app: public-api-bff
+        workload-tier: stateless
+    spec:
+      serviceAccountName: hotel-app
+      priorityClassName: stateless-api
+      tolerations:
+        - key: workload-tier
+          operator: Equal
+          value: stateless
+          effect: NoSchedule
+      nodeSelector:
+        nodepool: stateless
+      containers:
+        - name: app
+          image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/public-api-bff:latest
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: search-api
+  namespace: hotel
+  labels:
+    app: search-api
+    workload-tier: stateless
+spec:
+  replicas: 6
+  selector:
+    matchLabels:
+      app: search-api
+  template:
+    metadata:
+      labels:
+        app: search-api
+        workload-tier: stateless
+    spec:
+      serviceAccountName: hotel-app
+      priorityClassName: stateless-api
+      tolerations:
+        - key: workload-tier
+          operator: Equal
+          value: stateless
+          effect: NoSchedule
+      nodeSelector:
+        nodepool: stateless
+      containers:
+        - name: app
+          image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/search-api:latest
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hotel-content-api
+  namespace: hotel
+  labels:
+    app: hotel-content-api
+    workload-tier: stateless
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: hotel-content-api
+  template:
+    metadata:
+      labels:
+        app: hotel-content-api
+        workload-tier: stateless
+    spec:
+      serviceAccountName: hotel-app
+      priorityClassName: stateless-api
+      tolerations:
+        - key: workload-tier
+          operator: Equal
+          value: stateless
+          effect: NoSchedule
+      nodeSelector:
+        nodepool: stateless
+      containers:
+        - name: app
+          image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/hotel-content-api:latest
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: session-api
+  namespace: hotel
+  labels:
+    app: session-api
+    workload-tier: stateless
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: session-api
+  template:
+    metadata:
+      labels:
+        app: session-api
+        workload-tier: stateless
+    spec:
+      serviceAccountName: hotel-app
+      priorityClassName: stateless-api
+      tolerations:
+        - key: workload-tier
+          operator: Equal
+          value: stateless
+          effect: NoSchedule
+      nodeSelector:
+        nodepool: stateless
+      containers:
+        - name: app
+          image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/session-api:latest
+          ports:
+            - containerPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-ops-api
+  namespace: hotel
+  labels:
+    app: admin-ops-api
+    workload-tier: stateless
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: admin-ops-api
+  template:
+    metadata:
+      labels:
+        app: admin-ops-api
+        workload-tier: stateless
+    spec:
+      serviceAccountName: hotel-app
+      priorityClassName: stateless-api
+      tolerations:
+        - key: workload-tier
+          operator: Equal
+          value: stateless
+          effect: NoSchedule
+      nodeSelector:
+        nodepool: stateless
+      containers:
+        - name: app
+          image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/admin-ops-api:latest
+          ports:
+            - containerPort: 8080

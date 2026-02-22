@@ -1,0 +1,7 @@
+project_name         = "hotel"
+environment          = "uat"
+network_state_bucket = "example-hotel-tfstate"
+network_state_key    = "uat/stacks/network/terraform.tfstate"
+state_region         = "ap-southeast-1"
+database_name        = "hotel_db"
+database_username    = "hotel_admin"

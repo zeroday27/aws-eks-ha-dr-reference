@@ -1,0 +1,111 @@
+# =============================================================================
+# Hotel Platform - Horizontal Pod Autoscaler
+# Scales based on CPU, Memory, and Custom Metrics (concurrent requests)
+# =============================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hotel-api
+  namespace: hotel
+  labels:
+    app: hotel-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hotel-api
+  
+  # Scaling Boundaries
+  minReplicas: 6      # Minimum for 3 AZ distribution (2 per AZ)
+  maxReplicas: 100    # Handle 10x traffic spike
+  
+  # Scaling Metrics
+  metrics:
+    # CPU-based scaling
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+    
+    # Memory-based scaling
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 70
+    
+    # Custom metric: Concurrent HTTP requests (from Prometheus)
+    - type: Pods
+      pods:
+        metric:
+          name: http_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "100"
+    
+    # Custom metric: Request queue depth
+    - type: Pods
+      pods:
+        metric:
+          name: request_queue_depth
+        target:
+          type: AverageValue
+          averageValue: "10"
+  
+  # Scaling Behavior - Aggressive scale up, conservative scale down
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0  # Immediate scale up for flash sales
+      policies:
+        - type: Percent
+          value: 100              # Double capacity
+          periodSeconds: 15
+        - type: Pods
+          value: 10               # Add up to 10 pods
+          periodSeconds: 15
+      selectPolicy: Max
+    
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait 5 min before scaling down
+      policies:
+        - type: Percent
+          value: 10               # Remove 10% of pods
+          periodSeconds: 60
+        - type: Pods
+          value: 2                # Remove max 2 pods per minute
+          periodSeconds: 60
+      selectPolicy: Min
+---
+# =============================================================================
+# Pod Disruption Budget - Guarantee Zero Downtime
+# =============================================================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: hotel-api
+  namespace: hotel
+  labels:
+    app: hotel-api
+spec:
+  # Ensure at least 4 pods are always available (covers 1 AZ failure + 1 pod disruption)
+  minAvailable: 4
+  selector:
+    matchLabels:
+      app: hotel-api
+---
+# =============================================================================
+# Alternative PDB - Percentage Based (for larger deployments)
+# =============================================================================
+# apiVersion: policy/v1
+# kind: PodDisruptionBudget
+# metadata:
+#   name: hotel-api-percentage
+#   namespace: hotel
+# spec:
+#   maxUnavailable: 25%  # At most 25% of pods can be unavailable
+#   selector:
+#     matchLabels:
+#       app: hotel-api

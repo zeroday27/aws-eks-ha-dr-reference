@@ -1,0 +1,15 @@
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: critical-domain
+value: 100000
+globalDefault: false
+description: "Priority class for transactional domain services on EKS"
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: stateless-api
+value: 50000
+globalDefault: false
+description: "Priority class for stateless API services on EKS"

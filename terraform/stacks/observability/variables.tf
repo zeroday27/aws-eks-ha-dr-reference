@@ -1,0 +1,26 @@
+variable "project_name" {
+  type    = string
+  default = "hotel"
+}
+
+variable "environment" {
+  type    = string
+  default = "prod"
+}
+
+variable "primary_region" {
+  type    = string
+  default = "ap-southeast-1"
+}
+
+variable "secondary_region" {
+  type    = string
+  default = "ap-southeast-2"
+}
+
+variable "edge_state_bucket" { type = string }
+variable "edge_state_key" { type = string }
+variable "state_region" {
+  type    = string
+  default = "ap-southeast-1"
+}

@@ -1,0 +1,197 @@
+# =============================================================================
+# Prometheus ServiceMonitor for Application Metrics
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: hotel-api
+  namespace: hotel
+  labels:
+    app: hotel-api
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: hotel-api
+  endpoints:
+    - port: metrics
+      interval: 15s
+      path: /metrics
+      scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+      - hotel
+---
+# =============================================================================
+# PrometheusRule for Alerting
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hotel-api-alerts
+  namespace: hotel
+  labels:
+    app: hotel-api
+    release: prometheus
+spec:
+  groups:
+    - name: hotel-api
+      interval: 30s
+      rules:
+        # High Error Rate Alert
+        - alert: HotelHighErrorRate
+          expr: |
+            sum(rate(http_requests_total{app="hotel-api",status=~"5.."}[5m])) /
+            sum(rate(http_requests_total{app="hotel-api"}[5m])) > 0.05
+          for: 2m
+          labels:
+            severity: critical
+            team: sre
+          annotations:
+            summary: "High error rate detected for Hotel API"
+            description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes"
+        
+        # High Latency Alert
+        - alert: HotelHighLatency
+          expr: |
+            histogram_quantile(0.95, 
+              sum(rate(http_request_duration_seconds_bucket{app="hotel-api"}[5m])) by (le)
+            ) > 1
+          for: 5m
+          labels:
+            severity: warning
+            team: sre
+          annotations:
+            summary: "High latency detected for Hotel API"
+            description: "P95 latency is {{ $value }}s over the last 5 minutes"
+        
+        # Pod Availability Alert
+        - alert: HotelLowPodCount
+          expr: |
+            kube_deployment_status_replicas_available{deployment="hotel-api"} < 4
+          for: 1m
+          labels:
+            severity: critical
+            team: sre
+          annotations:
+            summary: "Low pod availability for Hotel API"
+            description: "Only {{ $value }} pods available, minimum is 4 for HA"
+        
+        # Memory Usage Alert
+        - alert: HotelHighMemoryUsage
+          expr: |
+            container_memory_usage_bytes{container="hotel-api"} /
+            container_spec_memory_limit_bytes{container="hotel-api"} > 0.85
+          for: 5m
+          labels:
+            severity: warning
+            team: sre
+          annotations:
+            summary: "High memory usage for Hotel API pod"
+            description: "Memory usage is {{ $value | humanizePercentage }}"
+        
+        # Redis Connection Issues
+        - alert: HotelRedisConnectionFailure
+          expr: |
+            sum(rate(redis_connection_errors_total{app="hotel-api"}[5m])) > 0
+          for: 2m
+          labels:
+            severity: critical
+            team: sre
+          annotations:
+            summary: "Redis connection failures detected"
+            description: "{{ $value }} Redis connection errors per second"
+        
+        # Database Connection Pool Exhaustion
+        - alert: HotelDBPoolExhaustion
+          expr: |
+            db_pool_connections_used{app="hotel-api"} / 
+            db_pool_connections_max{app="hotel-api"} > 0.9
+          for: 2m
+          labels:
+            severity: warning
+            team: sre
+          annotations:
+            summary: "Database connection pool near exhaustion"
+            description: "{{ $value | humanizePercentage }} of DB connections in use"
+---
+# =============================================================================
+# Grafana Dashboard ConfigMap
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hotel-api-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  hotel-api-dashboard.json: |
+    {
+      "dashboard": {
+        "title": "Hotel Platform - API Dashboard",
+        "uid": "hotel-api",
+        "panels": [
+          {
+            "title": "Request Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "sum(rate(http_requests_total{app=\"hotel-api\"}[1m]))",
+                "legendFormat": "Requests/sec"
+              }
+            ]
+          },
+          {
+            "title": "Error Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "sum(rate(http_requests_total{app=\"hotel-api\",status=~\"5..\"}[1m])) / sum(rate(http_requests_total{app=\"hotel-api\"}[1m]))",
+                "legendFormat": "Error Rate"
+              }
+            ]
+          },
+          {
+            "title": "P95 Latency",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{app=\"hotel-api\"}[5m])) by (le))",
+                "legendFormat": "P95 Latency"
+              }
+            ]
+          },
+          {
+            "title": "Pod Count",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "kube_deployment_status_replicas_available{deployment=\"hotel-api\"}",
+                "legendFormat": "Available Pods"
+              }
+            ]
+          },
+          {
+            "title": "Redis Cache Hit Rate",
+            "type": "gauge",
+            "targets": [
+              {
+                "expr": "sum(rate(redis_cache_hits_total{app=\"hotel-api\"}[5m])) / (sum(rate(redis_cache_hits_total{app=\"hotel-api\"}[5m])) + sum(rate(redis_cache_misses_total{app=\"hotel-api\"}[5m])))",
+                "legendFormat": "Cache Hit Rate"
+              }
+            ]
+          },
+          {
+            "title": "DB Connection Pool Usage",
+            "type": "gauge",
+            "targets": [
+              {
+                "expr": "db_pool_connections_used{app=\"hotel-api\"} / db_pool_connections_max{app=\"hotel-api\"}",
+                "legendFormat": "Pool Usage"
+              }
+            ]
+          }
+        ]
+      }
+    }

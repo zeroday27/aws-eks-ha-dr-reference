@@ -1,0 +1,5 @@
+project_name      = "hotel"
+environment       = "uat"
+edge_state_bucket = "example-hotel-tfstate"
+edge_state_key    = "uat/stacks/edge/terraform.tfstate"
+state_region      = "ap-southeast-1"
