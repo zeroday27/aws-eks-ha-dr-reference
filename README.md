@@ -19,6 +19,7 @@ This repository is intentionally generic and reusable for assessment, POC, and i
 - `kubernetes/base/` - base manifests for services, autoscaling, policies, and observability
 - `policy/terraform/` - policy as code (OPA/Rego)
 - `docs/` - architecture, API contracts, runbooks, and testing plan
+- `scripts/` - deployment helpers for preflight, Terraform stacks, manifest rendering, and edge input collection
 
 ## Environment Strategy
 
@@ -34,26 +35,28 @@ Recommended enterprise pattern:
 
 ## Quick Start
 
-1. Initialize a stack:
+1. Run preflight checks:
 ```bash
-cd terraform/stacks/network
-terraform init
+./scripts/preflight.sh
 ```
 
-2. Validate with environment tfvars:
+2. Export backend variables:
 ```bash
-terraform validate
-terraform plan -var-file=../../environments/dev/network.tfvars
+export TF_STATE_BUCKET="<state_bucket>"
+export TF_LOCK_TABLE="<lock_table>"
+export TF_STATE_REGION="ap-southeast-1"
 ```
 
-3. Apply in stack order:
-- `network`
-- `platform-eks`
-- `data`
-- `edge`
-- `observability`
+3. Plan/apply Terraform in stack order:
+```bash
+./scripts/deploy_terraform.sh --env dev --action plan
+./scripts/deploy_terraform.sh --env dev --action apply
+```
+
+4. For full real-AWS POC steps (including EKS manifests and edge dependencies), use `docs/runbooks/DEV_POC_DEPLOYMENT.md`.
 
 ## Notes
 
 - Replace placeholder ARNs, domains, and account IDs in `terraform/environments/*/*.tfvars` before deployment.
 - This repo includes reference manifests; tune resources, policies, and workload identities for your org.
+- Credential material is stored in AWS Secrets Manager and mounted via Secrets Store CSI; do not place credentials in environment variables or committed config files.

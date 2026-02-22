@@ -20,6 +20,7 @@ override.tf.json
 .terraformrc
 terraform.rc
 *.tfplan
+terraform/.plans/
 
 # Python (Lambda helper code)
 __pycache__/

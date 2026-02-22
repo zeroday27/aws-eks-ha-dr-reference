@@ -133,6 +133,17 @@ resource "random_password" "db" {
   override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 
+resource "random_string" "db_username_suffix" {
+  length  = 8
+  upper   = false
+  special = false
+  numeric = true
+}
+
+locals {
+  effective_db_username = var.database_username != "" ? var.database_username : "dbu${random_string.db_username_suffix.result}"
+}
+
 resource "aws_rds_global_cluster" "this" {
   global_cluster_identifier = "${var.project_name}-${var.environment}-global"
   engine                    = "aurora-postgresql"
@@ -147,7 +158,7 @@ resource "aws_rds_cluster" "primary" {
   global_cluster_identifier       = aws_rds_global_cluster.this.id
   db_subnet_group_name            = aws_db_subnet_group.primary.name
   database_name                   = var.database_name
-  master_username                 = var.database_username
+  master_username                 = local.effective_db_username
   master_password                 = random_password.db.result
   vpc_security_group_ids          = [aws_security_group.rds_primary.id]
   storage_encrypted               = true
@@ -200,10 +211,28 @@ resource "aws_secretsmanager_secret" "db_primary" {
 resource "aws_secretsmanager_secret_version" "db_primary" {
   secret_id = aws_secretsmanager_secret.db_primary.id
   secret_string = jsonencode({
-    username    = var.database_username
+    username    = local.effective_db_username
     password    = random_password.db.result
     host        = aws_rds_cluster.primary.endpoint
     reader_host = aws_rds_cluster.primary.reader_endpoint
+    database    = var.database_name
+    port        = 5432
+  })
+}
+
+resource "aws_secretsmanager_secret" "db_secondary" {
+  provider = aws.secondary
+  name     = "${var.project_name}/${var.environment}/database/secondary"
+}
+
+resource "aws_secretsmanager_secret_version" "db_secondary" {
+  provider  = aws.secondary
+  secret_id = aws_secretsmanager_secret.db_secondary.id
+  secret_string = jsonencode({
+    username    = local.effective_db_username
+    password    = random_password.db.result
+    host        = aws_rds_cluster.secondary.endpoint
+    reader_host = aws_rds_cluster.secondary.reader_endpoint
     database    = var.database_name
     port        = 5432
   })

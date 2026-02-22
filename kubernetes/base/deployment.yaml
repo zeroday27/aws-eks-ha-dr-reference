@@ -95,53 +95,17 @@ spec:
           # Environment Variables
           env:
             - name: APP_ENV
-              value: "production"
+              value: "${APP_ENV}"
             - name: LOG_LEVEL
               value: "info"
             - name: SERVER_PORT
               value: "8080"
-            # Database connection via RDS Proxy
-            - name: DB_HOST
-              valueFrom:
-                secretKeyRef:
-                  name: hotel-db-credentials
-                  key: proxy_endpoint
-            - name: DB_PORT
-              valueFrom:
-                secretKeyRef:
-                  name: hotel-db-credentials
-                  key: port
-            - name: DB_NAME
-              valueFrom:
-                secretKeyRef:
-                  name: hotel-db-credentials
-                  key: database
-            - name: DB_USER
-              valueFrom:
-                secretKeyRef:
-                  name: hotel-db-credentials
-                  key: username
-            - name: DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: hotel-db-credentials
-                  key: password
-            # Redis connection
-            - name: REDIS_HOST
-              valueFrom:
-                secretKeyRef:
-                  name: hotel-redis-credentials
-                  key: primary_endpoint
-            - name: REDIS_PORT
-              valueFrom:
-                secretKeyRef:
-                  name: hotel-redis-credentials
-                  key: port
-            - name: REDIS_AUTH_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: hotel-redis-credentials
-                  key: auth_token
+            # Application reads database and redis credentials from mounted
+            # Secrets Manager files via CSI (not from environment variables).
+            - name: DB_SECRET_FILE
+              value: "/mnt/secrets-store/db.json"
+            - name: REDIS_SECRET_FILE
+              value: "/mnt/secrets-store/redis.json"
           
           # Resource Requests and Limits
           resources:
@@ -198,6 +162,9 @@ spec:
               mountPath: /tmp
             - name: cache
               mountPath: /app/cache
+            - name: secrets-store-inline
+              mountPath: /mnt/secrets-store
+              readOnly: true
       
       # Volumes
       volumes:
@@ -206,6 +173,12 @@ spec:
         - name: cache
           emptyDir:
             sizeLimit: 100Mi
+        - name: secrets-store-inline
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: hotel-app-secrets
       
       # Termination Grace Period for graceful shutdown
       terminationGracePeriodSeconds: 60
@@ -227,7 +200,7 @@ metadata:
   name: hotel-app
   namespace: hotel
   annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::${AWS_ACCOUNT_ID}:role/hotel-prod-app-role
+    eks.amazonaws.com/role-arn: ${WORKLOAD_IRSA_ROLE_ARN}
 ---
 # =============================================================================
 # Namespace

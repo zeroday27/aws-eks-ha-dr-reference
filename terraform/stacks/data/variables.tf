@@ -32,7 +32,7 @@ variable "database_name" {
 
 variable "database_username" {
   type    = string
-  default = "hotel_admin"
+  default = ""
 }
 
 variable "db_engine_version" {

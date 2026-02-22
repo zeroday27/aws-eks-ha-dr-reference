@@ -7,3 +7,4 @@ Creates edge and event-driven control plane:
 - Lambda event-ingest API (`POST /api/events/commands`) -> SQS buffer
 - Lambda worker consumes SQS and publishes to EventBridge regional buses
 - EventBridge global endpoint failover
+- EventBridge consumer Lambda targets are optional and can be attached later

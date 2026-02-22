@@ -41,6 +41,36 @@ data "terraform_remote_state" "network" {
 
 locals {
   cloudfront_aliases = distinct(compact([var.api_domain_name, var.web_domain_name]))
+
+  primary_eventbridge_consumers = merge(
+    var.notifications_lambda_arn != "" ? {
+      notifications = {
+        arn           = var.notifications_lambda_arn
+        event_pattern = jsonencode({ "source" : ["hotel.api"], "detail-type" : ["NotifyGuest"] })
+      }
+    } : {},
+    var.audit_lambda_arn != "" ? {
+      audit = {
+        arn           = var.audit_lambda_arn
+        event_pattern = jsonencode({ "source" : ["hotel.api"] })
+      }
+    } : {}
+  )
+
+  secondary_eventbridge_consumers = merge(
+    var.notifications_lambda_arn_secondary != "" ? {
+      notifications = {
+        arn           = var.notifications_lambda_arn_secondary
+        event_pattern = jsonencode({ "source" : ["hotel.api"], "detail-type" : ["NotifyGuest"] })
+      }
+    } : {},
+    var.audit_lambda_arn_secondary != "" ? {
+      audit = {
+        arn           = var.audit_lambda_arn_secondary
+        event_pattern = jsonencode({ "source" : ["hotel.api"] })
+      }
+    } : {}
+  )
 }
 
 resource "aws_security_group" "apigw_vpc_link_primary" {
@@ -216,16 +246,7 @@ module "eventbridge_primary" {
   environment  = var.environment
   region       = var.primary_region
 
-  lambda_consumers = {
-    notifications = {
-      arn           = var.notifications_lambda_arn
-      event_pattern = jsonencode({ "source" : ["hotel.api"], "detail-type" : ["NotifyGuest"] })
-    }
-    audit = {
-      arn           = var.audit_lambda_arn
-      event_pattern = jsonencode({ "source" : ["hotel.api"] })
-    }
-  }
+  lambda_consumers = local.primary_eventbridge_consumers
 }
 
 module "eventbridge_secondary" {
@@ -239,16 +260,7 @@ module "eventbridge_secondary" {
   environment  = "${var.environment}-dr"
   region       = var.secondary_region
 
-  lambda_consumers = {
-    notifications = {
-      arn           = var.notifications_lambda_arn_secondary
-      event_pattern = jsonencode({ "source" : ["hotel.api"], "detail-type" : ["NotifyGuest"] })
-    }
-    audit = {
-      arn           = var.audit_lambda_arn_secondary
-      event_pattern = jsonencode({ "source" : ["hotel.api"] })
-    }
-  }
+  lambda_consumers = local.secondary_eventbridge_consumers
 }
 
 resource "aws_lambda_function" "event_ingest_primary" {
