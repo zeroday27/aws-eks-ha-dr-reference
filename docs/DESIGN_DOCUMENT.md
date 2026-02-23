@@ -105,6 +105,7 @@ Stateless APIs:
 - Remote state in encrypted S3 with locking.
 - Version-pinned modules/providers.
 - CI gates: fmt, validate, tflint, tfsec, checkov, OPA.
+- Credentials are stored in AWS Secrets Manager and mounted to pods via CSI (no plaintext credentials in env vars or repo config).
 - Drift detection and policy checks.
 
 ## 7. Testing and DR Drills

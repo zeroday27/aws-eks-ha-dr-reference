@@ -32,7 +32,7 @@ variable "database_name" {
 
 variable "database_username" {
   type    = string
-  default = "hotel_admin"
+  default = ""
 }
 
 variable "db_engine_version" {
@@ -78,4 +78,10 @@ variable "primary_kms_key_id" {
 variable "secondary_kms_key_id" {
   type    = string
   default = "alias/aws/elasticache"
+}
+
+variable "deletion_protection" {
+  description = "Enable deletion protection on RDS clusters (set false for dev teardown)"
+  type        = bool
+  default     = true
 }

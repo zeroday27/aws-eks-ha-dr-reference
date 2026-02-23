@@ -78,17 +78,21 @@ variable "create_web_route53_record" {
 }
 
 variable "notifications_lambda_arn" {
-  type = string
+  type    = string
+  default = ""
 }
 
 variable "audit_lambda_arn" {
-  type = string
+  type    = string
+  default = ""
 }
 
 variable "notifications_lambda_arn_secondary" {
-  type = string
+  type    = string
+  default = ""
 }
 
 variable "audit_lambda_arn_secondary" {
-  type = string
+  type    = string
+  default = ""
 }

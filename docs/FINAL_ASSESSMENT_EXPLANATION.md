@@ -9,6 +9,7 @@ Design principles:
 2. Decoupled asynchronous processing for spike absorption.
 3. One container platform (EKS) for operational consistency.
 4. Defense in depth from edge to workload and data tiers.
+5. Credentials are managed in AWS Secrets Manager and mounted at runtime (not injected as plaintext env vars).
 
 ## 2. End-to-End Traffic Model
 

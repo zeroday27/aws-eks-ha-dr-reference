@@ -2,7 +2,7 @@
 # Karpenter NodePools - EKS-only Platform Segmentation
 # =============================================================================
 
-apiVersion: karpenter.sh/v1beta1
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   name: hotel-critical
@@ -30,11 +30,11 @@ spec:
         - key: topology.kubernetes.io/zone
           operator: In
           values:
-            - ap-southeast-1a
-            - ap-southeast-1b
-            - ap-southeast-1c
+            - ${PRIMARY_AZ_1}
+            - ${PRIMARY_AZ_2}
+            - ${PRIMARY_AZ_3}
       nodeClassRef:
-        apiVersion: karpenter.k8s.aws/v1beta1
+        group: karpenter.k8s.aws
         kind: EC2NodeClass
         name: hotel-default
       taints:
@@ -52,7 +52,7 @@ spec:
     budgets:
       - nodes: "10%"
 ---
-apiVersion: karpenter.sh/v1beta1
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   name: hotel-stateless
@@ -77,11 +77,11 @@ spec:
         - key: topology.kubernetes.io/zone
           operator: In
           values:
-            - ap-southeast-1a
-            - ap-southeast-1b
-            - ap-southeast-1c
+            - ${PRIMARY_AZ_1}
+            - ${PRIMARY_AZ_2}
+            - ${PRIMARY_AZ_3}
       nodeClassRef:
-        apiVersion: karpenter.k8s.aws/v1beta1
+        group: karpenter.k8s.aws
         kind: EC2NodeClass
         name: hotel-default
       taints:
@@ -97,22 +97,23 @@ spec:
     consolidationPolicy: WhenEmpty
     consolidateAfter: 10m
 ---
-apiVersion: karpenter.k8s.aws/v1beta1
+apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
 metadata:
   name: hotel-default
 spec:
-  amiFamily: AL2023
+  amiSelectorTerms:
+    - alias: al2023@latest
 
   subnetSelectorTerms:
     - tags:
-        karpenter.sh/discovery: hotel-prod
+        karpenter.sh/discovery: ${KARPENTER_DISCOVERY_TAG}
 
   securityGroupSelectorTerms:
     - tags:
-        karpenter.sh/discovery: hotel-prod
+        karpenter.sh/discovery: ${KARPENTER_DISCOVERY_TAG}
 
-  instanceProfile: hotel-prod-karpenter-node-profile
+  role: ${KARPENTER_NODE_ROLE_NAME}
 
   metadataOptions:
     httpEndpoint: enabled
@@ -132,5 +133,5 @@ spec:
 
   tags:
     Project: HotelPlatform
-    Environment: prod
+    Environment: ${APP_ENV}
     ManagedBy: Karpenter

@@ -24,9 +24,17 @@ resource "aws_sqs_queue" "dlq" {
 
 resource "aws_cloudwatch_event_bus_policy" "allow_account" {
   event_bus_name = aws_cloudwatch_event_bus.this.name
-  statement_id   = "AllowAccountPutEvents"
-  action         = "events:PutEvents"
-  principal      = data.aws_caller_identity.current.account_id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "AllowAccountPutEvents"
+      Effect    = "Allow"
+      Principal = { AWS = data.aws_caller_identity.current.account_id }
+      Action    = "events:PutEvents"
+      Resource  = aws_cloudwatch_event_bus.this.arn
+    }]
+  })
 }
 
 resource "aws_cloudwatch_event_rule" "consumer" {

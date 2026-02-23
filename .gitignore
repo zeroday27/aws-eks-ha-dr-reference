@@ -9,6 +9,7 @@
 
 # Terraform
 **/.terraform/*
+.terraform.lock.hcl
 *.tfstate
 *.tfstate.*
 crash.log
@@ -20,6 +21,7 @@ override.tf.json
 .terraformrc
 terraform.rc
 *.tfplan
+terraform/.plans/
 
 # Python (Lambda helper code)
 __pycache__/
@@ -30,8 +32,18 @@ __pycache__/
 .venv/
 venv/
 
+# Lambda build artifacts
+*.zip
+
 # Kubernetes local artifacts
 *.kubeconfig
+kubernetes/rendered/
+
+# Secrets and environment variables
+.env
+.env.*
+*.pem
+*.key
 
 # Logs
 *.log

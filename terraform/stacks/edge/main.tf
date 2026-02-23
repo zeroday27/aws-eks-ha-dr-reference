@@ -17,11 +17,29 @@ terraform {
 
 provider "aws" {
   region = var.primary_region
+
+  default_tags {
+    tags = {
+      Project     = var.project_name
+      Environment = var.environment
+      Stack       = "edge"
+      ManagedBy   = "terraform"
+    }
+  }
 }
 
 provider "aws" {
   alias  = "secondary"
   region = var.secondary_region
+
+  default_tags {
+    tags = {
+      Project     = var.project_name
+      Environment = var.environment
+      Stack       = "edge"
+      ManagedBy   = "terraform"
+    }
+  }
 }
 
 provider "aws" {
@@ -41,6 +59,36 @@ data "terraform_remote_state" "network" {
 
 locals {
   cloudfront_aliases = distinct(compact([var.api_domain_name, var.web_domain_name]))
+
+  primary_eventbridge_consumers = merge(
+    var.notifications_lambda_arn != "" ? {
+      notifications = {
+        arn           = var.notifications_lambda_arn
+        event_pattern = jsonencode({ "source" : ["hotel.api"], "detail-type" : ["NotifyGuest"] })
+      }
+    } : {},
+    var.audit_lambda_arn != "" ? {
+      audit = {
+        arn           = var.audit_lambda_arn
+        event_pattern = jsonencode({ "source" : ["hotel.api"] })
+      }
+    } : {}
+  )
+
+  secondary_eventbridge_consumers = merge(
+    var.notifications_lambda_arn_secondary != "" ? {
+      notifications = {
+        arn           = var.notifications_lambda_arn_secondary
+        event_pattern = jsonencode({ "source" : ["hotel.api"], "detail-type" : ["NotifyGuest"] })
+      }
+    } : {},
+    var.audit_lambda_arn_secondary != "" ? {
+      audit = {
+        arn           = var.audit_lambda_arn_secondary
+        event_pattern = jsonencode({ "source" : ["hotel.api"] })
+      }
+    } : {}
+  )
 }
 
 resource "aws_security_group" "apigw_vpc_link_primary" {
@@ -134,12 +182,50 @@ resource "aws_iam_role_policy" "lambda_ingest_sqs" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
-        Action = ["sqs:SendMessage"]
-        Resource = [
-          aws_sqs_queue.event_ingest_primary.arn,
-          aws_sqs_queue.event_ingest_secondary.arn
-        ]
+        Effect   = "Allow"
+        Action   = ["sqs:SendMessage"]
+        Resource = [aws_sqs_queue.event_ingest_primary.arn]
+      }
+    ]
+  })
+}
+
+# --- Secondary region IAM roles (Lambda cannot assume cross-region roles) ---
+
+resource "aws_iam_role" "lambda_event_ingest_secondary" {
+  provider = aws.secondary
+  name     = "${var.project_name}-${var.environment}-dr-event-ingest-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_ingest_basic_secondary" {
+  provider   = aws.secondary
+  role       = aws_iam_role.lambda_event_ingest_secondary.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy" "lambda_ingest_sqs_secondary" {
+  provider = aws.secondary
+  role     = aws_iam_role.lambda_event_ingest_secondary.id
+  name     = "${var.project_name}-${var.environment}-dr-event-ingest-sqs"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["sqs:SendMessage"]
+        Resource = [aws_sqs_queue.event_ingest_secondary.arn]
       }
     ]
   })
@@ -180,18 +266,61 @@ resource "aws_iam_role_policy" "lambda_worker_runtime" {
           "sqs:GetQueueAttributes",
           "sqs:ChangeMessageVisibility"
         ]
-        Resource = [
-          aws_sqs_queue.event_ingest_primary.arn,
-          aws_sqs_queue.event_ingest_secondary.arn
-        ]
+        Resource = [aws_sqs_queue.event_ingest_primary.arn]
       },
       {
+        Effect   = "Allow"
+        Action   = ["events:PutEvents"]
+        Resource = [module.eventbridge_primary.bus_arn]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role" "lambda_event_worker_secondary" {
+  provider = aws.secondary
+  name     = "${var.project_name}-${var.environment}-dr-event-worker-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_worker_basic_secondary" {
+  provider   = aws.secondary
+  role       = aws_iam_role.lambda_event_worker_secondary.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy" "lambda_worker_runtime_secondary" {
+  provider = aws.secondary
+  role     = aws_iam_role.lambda_event_worker_secondary.id
+  name     = "${var.project_name}-${var.environment}-dr-event-worker-runtime"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
         Effect = "Allow"
-        Action = ["events:PutEvents"]
-        Resource = [
-          module.eventbridge_primary.bus_arn,
-          module.eventbridge_secondary.bus_arn
+        Action = [
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes",
+          "sqs:ChangeMessageVisibility"
         ]
+        Resource = [aws_sqs_queue.event_ingest_secondary.arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["events:PutEvents"]
+        Resource = [module.eventbridge_secondary.bus_arn]
       }
     ]
   })
@@ -216,16 +345,7 @@ module "eventbridge_primary" {
   environment  = var.environment
   region       = var.primary_region
 
-  lambda_consumers = {
-    notifications = {
-      arn           = var.notifications_lambda_arn
-      event_pattern = jsonencode({ "source" : ["hotel.api"], "detail-type" : ["NotifyGuest"] })
-    }
-    audit = {
-      arn           = var.audit_lambda_arn
-      event_pattern = jsonencode({ "source" : ["hotel.api"] })
-    }
-  }
+  lambda_consumers = local.primary_eventbridge_consumers
 }
 
 module "eventbridge_secondary" {
@@ -239,16 +359,7 @@ module "eventbridge_secondary" {
   environment  = "${var.environment}-dr"
   region       = var.secondary_region
 
-  lambda_consumers = {
-    notifications = {
-      arn           = var.notifications_lambda_arn_secondary
-      event_pattern = jsonencode({ "source" : ["hotel.api"], "detail-type" : ["NotifyGuest"] })
-    }
-    audit = {
-      arn           = var.audit_lambda_arn_secondary
-      event_pattern = jsonencode({ "source" : ["hotel.api"] })
-    }
-  }
+  lambda_consumers = local.secondary_eventbridge_consumers
 }
 
 resource "aws_lambda_function" "event_ingest_primary" {
@@ -273,7 +384,7 @@ resource "aws_lambda_function" "event_ingest_primary" {
 resource "aws_lambda_function" "event_ingest_secondary" {
   provider      = aws.secondary
   function_name = "${var.project_name}-${var.environment}-dr-event-ingest"
-  role          = aws_iam_role.lambda_event_ingest.arn
+  role          = aws_iam_role.lambda_event_ingest_secondary.arn
   handler       = "event_ingest.handler"
   runtime       = "python3.12"
   filename      = data.archive_file.event_ingest_zip.output_path
@@ -287,7 +398,7 @@ resource "aws_lambda_function" "event_ingest_secondary" {
     }
   }
 
-  depends_on = [aws_iam_role_policy.lambda_ingest_sqs]
+  depends_on = [aws_iam_role_policy.lambda_ingest_sqs_secondary]
 }
 
 resource "aws_lambda_function" "event_worker_primary" {
@@ -312,7 +423,7 @@ resource "aws_lambda_function" "event_worker_primary" {
 resource "aws_lambda_function" "event_worker_secondary" {
   provider      = aws.secondary
   function_name = "${var.project_name}-${var.environment}-dr-event-worker"
-  role          = aws_iam_role.lambda_event_worker.arn
+  role          = aws_iam_role.lambda_event_worker_secondary.arn
   handler       = "event_worker.handler"
   runtime       = "python3.12"
   filename      = data.archive_file.event_worker_zip.output_path
@@ -326,7 +437,7 @@ resource "aws_lambda_function" "event_worker_secondary" {
     }
   }
 
-  depends_on = [aws_iam_role_policy.lambda_worker_runtime]
+  depends_on = [aws_iam_role_policy.lambda_worker_runtime_secondary]
 }
 
 resource "aws_lambda_event_source_mapping" "event_worker_primary" {

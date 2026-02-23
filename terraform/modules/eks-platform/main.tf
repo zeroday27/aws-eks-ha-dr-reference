@@ -14,6 +14,14 @@ resource "aws_security_group" "cluster" {
   description = "Control plane SG"
   vpc_id      = var.vpc_id
 
+  ingress {
+    description = "Allow worker nodes to communicate with control plane"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -111,7 +119,6 @@ resource "aws_iam_role_policy_attachment" "node_ecr" {
 
 resource "aws_launch_template" "system" {
   name_prefix   = "${var.project_name}-${var.environment}-system-"
-  image_id      = null
   instance_type = var.system_node_instance_types[0]
 
   network_interfaces {
@@ -215,12 +222,12 @@ resource "aws_iam_role_policy" "workload_irsa" {
       {
         Effect   = "Allow"
         Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
-        Resource = "*"
+        Resource = "arn:aws:secretsmanager:*:*:secret:${var.project_name}/*"
       },
       {
         Effect   = "Allow"
         Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
-        Resource = "*"
+        Resource = "arn:aws:logs:*:*:log-group:/aws/eks/${var.project_name}-${var.environment}*:*"
       }
     ]
   })
@@ -261,12 +268,9 @@ resource "aws_iam_role_policy" "karpenter_controller" {
     Version = "2012-10-17"
     Statement = [
       {
+        Sid    = "KarpenterEC2ReadOnly"
         Effect = "Allow"
         Action = [
-          "ec2:CreateFleet",
-          "ec2:CreateLaunchTemplate",
-          "ec2:CreateTags",
-          "ec2:DeleteLaunchTemplate",
           "ec2:DescribeAvailabilityZones",
           "ec2:DescribeImages",
           "ec2:DescribeInstances",
@@ -275,19 +279,49 @@ resource "aws_iam_role_policy" "karpenter_controller" {
           "ec2:DescribeLaunchTemplates",
           "ec2:DescribeSecurityGroups",
           "ec2:DescribeSubnets",
+          "pricing:GetProducts"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "KarpenterEC2Write"
+        Effect = "Allow"
+        Action = [
+          "ec2:CreateFleet",
+          "ec2:CreateLaunchTemplate",
+          "ec2:CreateTags",
+          "ec2:DeleteLaunchTemplate",
           "ec2:RunInstances",
-          "ec2:TerminateInstances",
-          "iam:PassRole",
-          "pricing:GetProducts",
+          "ec2:TerminateInstances"
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:RequestedRegion" = data.aws_region.current.name
+          }
+        }
+      },
+      {
+        Sid      = "KarpenterPassRole"
+        Effect   = "Allow"
+        Action   = ["iam:PassRole"]
+        Resource = aws_iam_role.node.arn
+      },
+      {
+        Sid    = "KarpenterSQS"
+        Effect = "Allow"
+        Action = [
           "sqs:ReceiveMessage",
           "sqs:DeleteMessage",
           "sqs:GetQueueAttributes"
         ]
-        Resource = "*"
+        Resource = aws_sqs_queue.karpenter_interruptions.arn
       }
     ]
   })
 }
+
+data "aws_region" "current" {}
 
 resource "aws_iam_instance_profile" "karpenter" {
   name = "${var.project_name}-${var.environment}-karpenter-node-profile"

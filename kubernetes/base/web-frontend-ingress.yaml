@@ -1,0 +1,108 @@
+# =============================================================================
+# Sample Web Frontend Workload + ALB Ingress
+# Creates the public web ALB used as CloudFront web origin.
+# =============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hotel-web-frontend
+  namespace: hotel
+  labels:
+    app: hotel-web-frontend
+    workload-tier: stateless
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: hotel-web-frontend
+  template:
+    metadata:
+      labels:
+        app: hotel-web-frontend
+        workload-tier: stateless
+    spec:
+      priorityClassName: stateless-api
+      tolerations:
+        - key: workload-tier
+          operator: Equal
+          value: stateless
+          effect: NoSchedule
+      nodeSelector:
+        nodepool: stateless
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: nginx
+          image: public.ecr.aws/nginx/nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hotel-web-frontend
+  namespace: hotel
+spec:
+  selector:
+    app: hotel-web-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hotel-web
+  namespace: hotel
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/load-balancer-name: hotel-web
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/certificate-arn: ${WEB_ALB_CERT_ARN}
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    alb.ingress.kubernetes.io/healthcheck-path: /
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hotel-web-frontend
+                port:
+                  number: 80
