@@ -1,6 +1,6 @@
 project_name                       = "hotel"
 environment                        = "dev"
-network_state_bucket               = "example-hotel-tfstate"
+network_state_bucket               = "tf-state-nico-remote-backend"
 network_state_key                  = "dev/stacks/network/terraform.tfstate"
 state_region                       = "ap-southeast-1"
 primary_eks_nlb_listener_arn       = "arn:aws:elasticloadbalancing:ap-southeast-1:<account>:listener/net/hotel-api-private/..."

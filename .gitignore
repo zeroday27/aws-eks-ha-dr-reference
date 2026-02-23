@@ -9,6 +9,7 @@
 
 # Terraform
 **/.terraform/*
+.terraform.lock.hcl
 *.tfstate
 *.tfstate.*
 crash.log
@@ -31,8 +32,18 @@ __pycache__/
 .venv/
 venv/
 
+# Lambda build artifacts
+*.zip
+
 # Kubernetes local artifacts
 *.kubeconfig
+kubernetes/rendered/
+
+# Secrets and environment variables
+.env
+.env.*
+*.pem
+*.key
 
 # Logs
 *.log

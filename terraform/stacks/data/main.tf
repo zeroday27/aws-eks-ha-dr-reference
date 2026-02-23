@@ -17,11 +17,29 @@ terraform {
 
 provider "aws" {
   region = var.primary_region
+
+  default_tags {
+    tags = {
+      Project     = var.project_name
+      Environment = var.environment
+      Stack       = "data"
+      ManagedBy   = "terraform"
+    }
+  }
 }
 
 provider "aws" {
   alias  = "secondary"
   region = var.secondary_region
+
+  default_tags {
+    tags = {
+      Project     = var.project_name
+      Environment = var.environment
+      Stack       = "data"
+      ManagedBy   = "terraform"
+    }
+  }
 }
 
 data "terraform_remote_state" "network" {
@@ -148,7 +166,7 @@ resource "aws_rds_global_cluster" "this" {
   global_cluster_identifier = "${var.project_name}-${var.environment}-global"
   engine                    = "aurora-postgresql"
   engine_version            = var.db_engine_version
-  deletion_protection       = true
+  deletion_protection       = var.deletion_protection
 }
 
 resource "aws_rds_cluster" "primary" {
@@ -162,7 +180,7 @@ resource "aws_rds_cluster" "primary" {
   master_password                 = random_password.db.result
   vpc_security_group_ids          = [aws_security_group.rds_primary.id]
   storage_encrypted               = true
-  deletion_protection             = true
+  deletion_protection             = var.deletion_protection
   backup_retention_period         = 7
   enabled_cloudwatch_logs_exports = ["postgresql"]
   skip_final_snapshot             = false
@@ -188,7 +206,7 @@ resource "aws_rds_cluster" "secondary" {
   db_subnet_group_name      = aws_db_subnet_group.secondary.name
   vpc_security_group_ids    = [aws_security_group.rds_secondary.id]
   storage_encrypted         = true
-  deletion_protection       = true
+  deletion_protection       = var.deletion_protection
   skip_final_snapshot       = false
   final_snapshot_identifier = "${var.project_name}-${var.environment}-secondary-final"
 }

@@ -1,5 +1,5 @@
 project_name      = "hotel"
 environment       = "dev"
-edge_state_bucket = "example-hotel-tfstate"
+edge_state_bucket = "tf-state-nico-remote-backend"
 edge_state_key    = "dev/stacks/edge/terraform.tfstate"
 state_region      = "ap-southeast-1"

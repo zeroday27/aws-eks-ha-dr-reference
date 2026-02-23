@@ -16,7 +16,6 @@ Usage:
 
 Required environment variables:
   TF_STATE_BUCKET   S3 bucket for Terraform state
-  TF_LOCK_TABLE     DynamoDB lock table name
 
 Optional environment variables:
   TF_STATE_REGION   Backend region (default: ap-southeast-1)
@@ -58,8 +57,8 @@ if [[ "${ACTION}" != "plan" && "${ACTION}" != "apply" ]]; then
   exit 1
 fi
 
-if [[ -z "${TF_STATE_BUCKET:-}" || -z "${TF_LOCK_TABLE:-}" ]]; then
-  echo "ERROR: TF_STATE_BUCKET and TF_LOCK_TABLE are required."
+if [[ -z "${TF_STATE_BUCKET:-}" ]]; then
+  echo "ERROR: TF_STATE_BUCKET is required."
   exit 1
 fi
 
@@ -101,7 +100,7 @@ for stack in "${STACKS[@]}"; do
     -backend-config="bucket=${TF_STATE_BUCKET}" \
     -backend-config="key=${state_key}" \
     -backend-config="region=${TF_STATE_REGION}" \
-    -backend-config="dynamodb_table=${TF_LOCK_TABLE}" \
+    -backend-config="use_lockfile=true" \
     -backend-config="encrypt=true"
 
   terraform -chdir="${stack_dir}" validate

@@ -17,11 +17,29 @@ terraform {
 
 provider "aws" {
   region = var.primary_region
+
+  default_tags {
+    tags = {
+      Project     = var.project_name
+      Environment = var.environment
+      Stack       = "edge"
+      ManagedBy   = "terraform"
+    }
+  }
 }
 
 provider "aws" {
   alias  = "secondary"
   region = var.secondary_region
+
+  default_tags {
+    tags = {
+      Project     = var.project_name
+      Environment = var.environment
+      Stack       = "edge"
+      ManagedBy   = "terraform"
+    }
+  }
 }
 
 provider "aws" {
@@ -164,12 +182,50 @@ resource "aws_iam_role_policy" "lambda_ingest_sqs" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
-        Action = ["sqs:SendMessage"]
-        Resource = [
-          aws_sqs_queue.event_ingest_primary.arn,
-          aws_sqs_queue.event_ingest_secondary.arn
-        ]
+        Effect   = "Allow"
+        Action   = ["sqs:SendMessage"]
+        Resource = [aws_sqs_queue.event_ingest_primary.arn]
+      }
+    ]
+  })
+}
+
+# --- Secondary region IAM roles (Lambda cannot assume cross-region roles) ---
+
+resource "aws_iam_role" "lambda_event_ingest_secondary" {
+  provider = aws.secondary
+  name     = "${var.project_name}-${var.environment}-dr-event-ingest-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_ingest_basic_secondary" {
+  provider   = aws.secondary
+  role       = aws_iam_role.lambda_event_ingest_secondary.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy" "lambda_ingest_sqs_secondary" {
+  provider = aws.secondary
+  role     = aws_iam_role.lambda_event_ingest_secondary.id
+  name     = "${var.project_name}-${var.environment}-dr-event-ingest-sqs"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["sqs:SendMessage"]
+        Resource = [aws_sqs_queue.event_ingest_secondary.arn]
       }
     ]
   })
@@ -210,18 +266,61 @@ resource "aws_iam_role_policy" "lambda_worker_runtime" {
           "sqs:GetQueueAttributes",
           "sqs:ChangeMessageVisibility"
         ]
-        Resource = [
-          aws_sqs_queue.event_ingest_primary.arn,
-          aws_sqs_queue.event_ingest_secondary.arn
-        ]
+        Resource = [aws_sqs_queue.event_ingest_primary.arn]
       },
       {
+        Effect   = "Allow"
+        Action   = ["events:PutEvents"]
+        Resource = [module.eventbridge_primary.bus_arn]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role" "lambda_event_worker_secondary" {
+  provider = aws.secondary
+  name     = "${var.project_name}-${var.environment}-dr-event-worker-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_worker_basic_secondary" {
+  provider   = aws.secondary
+  role       = aws_iam_role.lambda_event_worker_secondary.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy" "lambda_worker_runtime_secondary" {
+  provider = aws.secondary
+  role     = aws_iam_role.lambda_event_worker_secondary.id
+  name     = "${var.project_name}-${var.environment}-dr-event-worker-runtime"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
         Effect = "Allow"
-        Action = ["events:PutEvents"]
-        Resource = [
-          module.eventbridge_primary.bus_arn,
-          module.eventbridge_secondary.bus_arn
+        Action = [
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes",
+          "sqs:ChangeMessageVisibility"
         ]
+        Resource = [aws_sqs_queue.event_ingest_secondary.arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["events:PutEvents"]
+        Resource = [module.eventbridge_secondary.bus_arn]
       }
     ]
   })
@@ -285,7 +384,7 @@ resource "aws_lambda_function" "event_ingest_primary" {
 resource "aws_lambda_function" "event_ingest_secondary" {
   provider      = aws.secondary
   function_name = "${var.project_name}-${var.environment}-dr-event-ingest"
-  role          = aws_iam_role.lambda_event_ingest.arn
+  role          = aws_iam_role.lambda_event_ingest_secondary.arn
   handler       = "event_ingest.handler"
   runtime       = "python3.12"
   filename      = data.archive_file.event_ingest_zip.output_path
@@ -299,7 +398,7 @@ resource "aws_lambda_function" "event_ingest_secondary" {
     }
   }
 
-  depends_on = [aws_iam_role_policy.lambda_ingest_sqs]
+  depends_on = [aws_iam_role_policy.lambda_ingest_sqs_secondary]
 }
 
 resource "aws_lambda_function" "event_worker_primary" {
@@ -324,7 +423,7 @@ resource "aws_lambda_function" "event_worker_primary" {
 resource "aws_lambda_function" "event_worker_secondary" {
   provider      = aws.secondary
   function_name = "${var.project_name}-${var.environment}-dr-event-worker"
-  role          = aws_iam_role.lambda_event_worker.arn
+  role          = aws_iam_role.lambda_event_worker_secondary.arn
   handler       = "event_worker.handler"
   runtime       = "python3.12"
   filename      = data.archive_file.event_worker_zip.output_path
@@ -338,7 +437,7 @@ resource "aws_lambda_function" "event_worker_secondary" {
     }
   }
 
-  depends_on = [aws_iam_role_policy.lambda_worker_runtime]
+  depends_on = [aws_iam_role_policy.lambda_worker_runtime_secondary]
 }
 
 resource "aws_lambda_event_source_mapping" "event_worker_primary" {

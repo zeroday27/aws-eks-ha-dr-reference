@@ -79,3 +79,9 @@ variable "secondary_kms_key_id" {
   type    = string
   default = "alias/aws/elasticache"
 }
+
+variable "deletion_protection" {
+  description = "Enable deletion protection on RDS clusters (set false for dev teardown)"
+  type        = bool
+  default     = true
+}

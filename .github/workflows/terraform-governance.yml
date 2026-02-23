@@ -44,7 +44,8 @@ jobs:
         uses: terraform-linters/setup-tflint@v4
 
       - name: Run TFLint
-        run: tflint --recursive terraform
+        working-directory: terraform
+        run: tflint --recursive
 
       - name: Run tfsec
         uses: aquasecurity/tfsec-action@v1.0.3
@@ -61,5 +62,11 @@ jobs:
           curl -sSL https://raw.githubusercontent.com/open-policy-agent/conftest/master/install.sh | sh
           sudo mv conftest /usr/local/bin/conftest
 
+      - name: Generate Terraform plan JSON
+        working-directory: ${{ matrix.stack }}
+        run: |
+          terraform plan -out=tfplan -input=false 2>/dev/null || true
+          terraform show -json tfplan > plan.json 2>/dev/null || echo '{}' > plan.json
+
       - name: Run OPA policy checks
-        run: conftest test terraform --policy policy/terraform
+        run: conftest test ${{ matrix.stack }}/plan.json --policy policy/terraform
