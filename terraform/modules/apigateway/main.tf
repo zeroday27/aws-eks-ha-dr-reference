@@ -21,7 +21,7 @@ resource "aws_apigatewayv2_api" "this" {
     allow_credentials = false
     allow_headers     = ["Authorization", "Content-Type", "Idempotency-Key", "X-Correlation-Id"]
     allow_methods     = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-    allow_origins     = ["*"]
+    allow_origins     = var.cors_allow_origins
     expose_headers    = ["X-Served-Region", "X-Correlation-Id"]
     max_age           = 300
   }
