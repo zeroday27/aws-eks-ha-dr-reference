@@ -39,3 +39,9 @@ variable "log_retention_days" {
   type    = number
   default = 30
 }
+
+variable "cors_allow_origins" {
+  description = "Allowed origins for CORS. Use specific domains in production."
+  type        = list(string)
+  default     = ["*"]
+}

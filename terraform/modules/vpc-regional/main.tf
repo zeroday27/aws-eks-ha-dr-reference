@@ -18,6 +18,60 @@ resource "aws_vpc" "this" {
   }
 }
 
+# -----------------------------------------------------------------------------
+# VPC Flow Logs — SEC-02
+# -----------------------------------------------------------------------------
+resource "aws_cloudwatch_log_group" "vpc_flow_log" {
+  name              = "/aws/vpc/${var.project_name}-${var.environment}-${var.region}/flow-logs"
+  retention_in_days = 30
+}
+
+resource "aws_iam_role" "vpc_flow_log" {
+  name = "${var.project_name}-${var.environment}-${var.region}-flow-log-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "vpc-flow-logs.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "vpc_flow_log" {
+  role = aws_iam_role.vpc_flow_log.id
+  name = "${var.project_name}-${var.environment}-${var.region}-flow-log-policy"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams"
+      ]
+      Resource = "${aws_cloudwatch_log_group.vpc_flow_log.arn}:*"
+    }]
+  })
+}
+
+resource "aws_flow_log" "this" {
+  vpc_id               = aws_vpc.this.id
+  traffic_type         = "ALL"
+  iam_role_arn         = aws_iam_role.vpc_flow_log.arn
+  log_destination      = aws_cloudwatch_log_group.vpc_flow_log.arn
+  log_destination_type = "cloud-watch-logs"
+  max_aggregation_interval = 60
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-${var.region}-flow-log"
+  }
+}
+
 resource "aws_internet_gateway" "this" {
   vpc_id = aws_vpc.this.id
 

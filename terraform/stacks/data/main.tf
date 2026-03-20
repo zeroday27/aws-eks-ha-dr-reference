@@ -68,7 +68,7 @@ resource "aws_security_group" "rds_primary" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [data.terraform_remote_state.network.outputs.primary.vpc_cidr]
   }
 }
 
@@ -89,7 +89,7 @@ resource "aws_security_group" "rds_secondary" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [data.terraform_remote_state.network.outputs.secondary.vpc_cidr]
   }
 }
 
@@ -109,7 +109,7 @@ resource "aws_security_group" "redis_primary" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [data.terraform_remote_state.network.outputs.primary.vpc_cidr]
   }
 }
 
@@ -130,7 +130,7 @@ resource "aws_security_group" "redis_secondary" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [data.terraform_remote_state.network.outputs.secondary.vpc_cidr]
   }
 }
 
