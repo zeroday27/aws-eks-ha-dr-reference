@@ -44,6 +44,8 @@ kubernetes/rendered/
 .env.*
 *.pem
 *.key
+*.tfvars
+*.auto.tfvars
 
 # Logs
 *.log

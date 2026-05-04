@@ -1,0 +1,1027 @@
+# =============================================================================
+# Online Boutique Demo — Adapted for Hotel HA/DR Architecture
+# Uses public Google Artifact Registry images (no ECR mirror needed for POC)
+#
+# Service Mapping:
+#   checkoutservice       → hotel-core (critical)
+#   cartservice           → loyalty-account (critical, uses Redis)
+#   productcatalogservice → inventory-availability (critical)
+#   currencyservice       → pricing-rules-engine (critical)
+#   paymentservice        → reservation-orchestrator (critical)
+#   frontend              → public-api-bff (stateless)
+#   recommendationservice → search-api (stateless)
+#   shippingservice       → hotel-content-api (stateless)
+#   emailservice          → session-api (stateless)
+#   adservice             → admin-ops-api (stateless)
+#   loadgenerator         → load-generator (utility)
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hotel
+  labels:
+    name: hotel
+---
+# --- Service Accounts ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hotel-demo
+  namespace: hotel
+---
+# =============================================================================
+# CRITICAL TIER — On-Demand Karpenter NodePool (hotel-critical)
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hotel-core
+  namespace: hotel
+  labels:
+    app: hotel-core
+    workload-tier: critical
+    demo-maps-to: checkoutservice
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hotel-core
+  template:
+    metadata:
+      labels:
+        app: hotel-core
+        workload-tier: critical
+    spec:
+      serviceAccountName: hotel-demo
+      terminationGracePeriodSeconds: 5
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      tolerations:
+        - key: workload-tier
+          operator: Equal
+          value: critical
+          effect: NoSchedule
+      nodeSelector:
+        nodepool: critical
+      containers:
+        - name: server
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            privileged: false
+            readOnlyRootFilesystem: true
+          image: us-central1-docker.pkg.dev/google-samples/microservices-demo/checkoutservice:v0.10.5
+          ports:
+            - containerPort: 5050
+          readinessProbe:
+            grpc:
+              port: 5050
+          livenessProbe:
+            grpc:
+              port: 5050
+          env:
+            - name: PORT
+              value: "5050"
+            - name: PRODUCT_CATALOG_SERVICE_ADDR
+              value: "inventory-availability:3550"
+            - name: SHIPPING_SERVICE_ADDR
+              value: "hotel-content-api:50051"
+            - name: PAYMENT_SERVICE_ADDR
+              value: "reservation-orchestrator:50051"
+            - name: EMAIL_SERVICE_ADDR
+              value: "session-api:5000"
+            - name: CURRENCY_SERVICE_ADDR
+              value: "pricing-rules-engine:7000"
+            - name: CART_SERVICE_ADDR
+              value: "loyalty-account:7070"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hotel-core
+  namespace: hotel
+spec:
+  type: ClusterIP
+  selector:
+    app: hotel-core
+  ports:
+    - name: grpc
+      port: 5050
+      targetPort: 5050
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loyalty-account
+  namespace: hotel
+  labels:
+    app: loyalty-account
+    workload-tier: critical
+    demo-maps-to: cartservice
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: loyalty-account
+  template:
+    metadata:
+      labels:
+        app: loyalty-account
+        workload-tier: critical
+    spec:
+      serviceAccountName: hotel-demo
+      terminationGracePeriodSeconds: 5
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      tolerations:
+        - key: workload-tier
+          operator: Equal
+          value: critical
+          effect: NoSchedule
+      nodeSelector:
+        nodepool: critical
+      containers:
+        - name: server
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            privileged: false
+            readOnlyRootFilesystem: true
+          image: us-central1-docker.pkg.dev/google-samples/microservices-demo/cartservice:v0.10.5
+          ports:
+            - containerPort: 7070
+          env:
+            - name: REDIS_ADDR
+              value: "redis-cart:6379"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 64Mi
+            limits:
+              cpu: 300m
+              memory: 128Mi
+          readinessProbe:
+            initialDelaySeconds: 15
+            grpc:
+              port: 7070
+          livenessProbe:
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            grpc:
+              port: 7070
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loyalty-account
+  namespace: hotel
+spec:
+  type: ClusterIP
+  selector:
+    app: loyalty-account
+  ports:
+    - name: grpc
+      port: 7070
+      targetPort: 7070
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-availability
+  namespace: hotel
+  labels:
+    app: inventory-availability
+    workload-tier: critical
+    demo-maps-to: productcatalogservice
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: inventory-availability
+  template:
+    metadata:
+      labels:
+        app: inventory-availability
+        workload-tier: critical
+    spec:
+      serviceAccountName: hotel-demo
+      terminationGracePeriodSeconds: 5
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      tolerations:
+        - key: workload-tier
+          operator: Equal
+          value: critical
+          effect: NoSchedule
+      nodeSelector:
+        nodepool: critical
+      containers:
+        - name: server
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            privileged: false
+            readOnlyRootFilesystem: true
+          image: us-central1-docker.pkg.dev/google-samples/microservices-demo/productcatalogservice:v0.10.5
+          ports:
+            - containerPort: 3550
+          env:
+            - name: PORT
+              value: "3550"
+            - name: DISABLE_PROFILER
+              value: "1"
+          readinessProbe:
+            grpc:
+              port: 3550
+          livenessProbe:
+            grpc:
+              port: 3550
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-availability
+  namespace: hotel
+spec:
+  type: ClusterIP
+  selector:
+    app: inventory-availability
+  ports:
+    - name: grpc
+      port: 3550
+      targetPort: 3550
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pricing-rules-engine
+  namespace: hotel
+  labels:
+    app: pricing-rules-engine
+    workload-tier: critical
+    demo-maps-to: currencyservice
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: pricing-rules-engine
+  template:
+    metadata:
+      labels:
+        app: pricing-rules-engine
+        workload-tier: critical
+    spec:
+      serviceAccountName: hotel-demo
+      terminationGracePeriodSeconds: 5
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      tolerations:
+        - key: workload-tier
+          operator: Equal
+          value: critical
+          effect: NoSchedule
+      nodeSelector:
+        nodepool: critical
+      containers:
+        - name: server
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            privileged: false
+            readOnlyRootFilesystem: true
+          image: us-central1-docker.pkg.dev/google-samples/microservices-demo/currencyservice:v0.10.5
+          ports:
+            - containerPort: 7000
+          env:
+            - name: PORT
+              value: "7000"
+            - name: DISABLE_PROFILER
+              value: "1"
+          readinessProbe:
+            grpc:
+              port: 7000
+          livenessProbe:
+            grpc:
+              port: 7000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pricing-rules-engine
+  namespace: hotel
+spec:
+  type: ClusterIP
+  selector:
+    app: pricing-rules-engine
+  ports:
+    - name: grpc
+      port: 7000
+      targetPort: 7000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reservation-orchestrator
+  namespace: hotel
+  labels:
+    app: reservation-orchestrator
+    workload-tier: critical
+    demo-maps-to: paymentservice
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: reservation-orchestrator
+  template:
+    metadata:
+      labels:
+        app: reservation-orchestrator
+        workload-tier: critical
+    spec:
+      serviceAccountName: hotel-demo
+      terminationGracePeriodSeconds: 5
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      tolerations:
+        - key: workload-tier
+          operator: Equal
+          value: critical
+          effect: NoSchedule
+      nodeSelector:
+        nodepool: critical
+      containers:
+        - name: server
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            privileged: false
+            readOnlyRootFilesystem: true
+          image: us-central1-docker.pkg.dev/google-samples/microservices-demo/paymentservice:v0.10.5
+          ports:
+            - containerPort: 50051
+          env:
+            - name: PORT
+              value: "50051"
+            - name: DISABLE_PROFILER
+              value: "1"
+          readinessProbe:
+            grpc:
+              port: 50051
+          livenessProbe:
+            grpc:
+              port: 50051
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reservation-orchestrator
+  namespace: hotel
+spec:
+  type: ClusterIP
+  selector:
+    app: reservation-orchestrator
+  ports:
+    - name: grpc
+      port: 50051
+      targetPort: 50051
+---
+# =============================================================================
+# STATELESS TIER — Karpenter NodePool (hotel-stateless)
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: public-api-bff
+  namespace: hotel
+  labels:
+    app: public-api-bff
+    workload-tier: stateless
+    demo-maps-to: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: public-api-bff
+  template:
+    metadata:
+      labels:
+        app: public-api-bff
+        workload-tier: stateless
+    spec:
+      serviceAccountName: hotel-demo
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      tolerations:
+        - key: workload-tier
+          operator: Equal
+          value: stateless
+          effect: NoSchedule
+      nodeSelector:
+        nodepool: stateless
+      containers:
+        - name: server
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            privileged: false
+            readOnlyRootFilesystem: true
+          image: us-central1-docker.pkg.dev/google-samples/microservices-demo/frontend:v0.10.5
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            initialDelaySeconds: 10
+            httpGet:
+              path: "/_healthz"
+              port: 8080
+              httpHeaders:
+                - name: "Cookie"
+                  value: "shop_session-id=x-readiness-probe"
+          livenessProbe:
+            initialDelaySeconds: 10
+            httpGet:
+              path: "/_healthz"
+              port: 8080
+              httpHeaders:
+                - name: "Cookie"
+                  value: "shop_session-id=x-liveness-probe"
+          env:
+            - name: PORT
+              value: "8080"
+            - name: PRODUCT_CATALOG_SERVICE_ADDR
+              value: "inventory-availability:3550"
+            - name: CURRENCY_SERVICE_ADDR
+              value: "pricing-rules-engine:7000"
+            - name: CART_SERVICE_ADDR
+              value: "loyalty-account:7070"
+            - name: RECOMMENDATION_SERVICE_ADDR
+              value: "search-api:8080"
+            - name: SHIPPING_SERVICE_ADDR
+              value: "hotel-content-api:50051"
+            - name: CHECKOUT_SERVICE_ADDR
+              value: "hotel-core:5050"
+            - name: AD_SERVICE_ADDR
+              value: "admin-ops-api:9555"
+            - name: ENABLE_PROFILER
+              value: "0"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: public-api-bff
+  namespace: hotel
+spec:
+  type: ClusterIP
+  selector:
+    app: public-api-bff
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+---
+# External LoadBalancer for demo access
+apiVersion: v1
+kind: Service
+metadata:
+  name: public-api-bff-external
+  namespace: hotel
+  labels:
+    app: public-api-bff
+spec:
+  type: LoadBalancer
+  selector:
+    app: public-api-bff
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: search-api
+  namespace: hotel
+  labels:
+    app: search-api
+    workload-tier: stateless
+    demo-maps-to: recommendationservice
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: search-api
+  template:
+    metadata:
+      labels:
+        app: search-api
+        workload-tier: stateless
+    spec:
+      serviceAccountName: hotel-demo
+      terminationGracePeriodSeconds: 5
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      tolerations:
+        - key: workload-tier
+          operator: Equal
+          value: stateless
+          effect: NoSchedule
+      nodeSelector:
+        nodepool: stateless
+      containers:
+        - name: server
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            privileged: false
+            readOnlyRootFilesystem: true
+          image: us-central1-docker.pkg.dev/google-samples/microservices-demo/recommendationservice:v0.10.5
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: PRODUCT_CATALOG_SERVICE_ADDR
+              value: "inventory-availability:3550"
+            - name: DISABLE_PROFILER
+              value: "1"
+          readinessProbe:
+            periodSeconds: 5
+            grpc:
+              port: 8080
+          livenessProbe:
+            periodSeconds: 5
+            grpc:
+              port: 8080
+          resources:
+            requests:
+              cpu: 100m
+              memory: 220Mi
+            limits:
+              cpu: 200m
+              memory: 450Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: search-api
+  namespace: hotel
+spec:
+  type: ClusterIP
+  selector:
+    app: search-api
+  ports:
+    - name: grpc
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hotel-content-api
+  namespace: hotel
+  labels:
+    app: hotel-content-api
+    workload-tier: stateless
+    demo-maps-to: shippingservice
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hotel-content-api
+  template:
+    metadata:
+      labels:
+        app: hotel-content-api
+        workload-tier: stateless
+    spec:
+      serviceAccountName: hotel-demo
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      tolerations:
+        - key: workload-tier
+          operator: Equal
+          value: stateless
+          effect: NoSchedule
+      nodeSelector:
+        nodepool: stateless
+      containers:
+        - name: server
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            privileged: false
+            readOnlyRootFilesystem: true
+          image: us-central1-docker.pkg.dev/google-samples/microservices-demo/shippingservice:v0.10.5
+          ports:
+            - containerPort: 50051
+          env:
+            - name: PORT
+              value: "50051"
+            - name: DISABLE_PROFILER
+              value: "1"
+          readinessProbe:
+            periodSeconds: 5
+            grpc:
+              port: 50051
+          livenessProbe:
+            grpc:
+              port: 50051
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hotel-content-api
+  namespace: hotel
+spec:
+  type: ClusterIP
+  selector:
+    app: hotel-content-api
+  ports:
+    - name: grpc
+      port: 50051
+      targetPort: 50051
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: session-api
+  namespace: hotel
+  labels:
+    app: session-api
+    workload-tier: stateless
+    demo-maps-to: emailservice
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: session-api
+  template:
+    metadata:
+      labels:
+        app: session-api
+        workload-tier: stateless
+    spec:
+      serviceAccountName: hotel-demo
+      terminationGracePeriodSeconds: 5
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      tolerations:
+        - key: workload-tier
+          operator: Equal
+          value: stateless
+          effect: NoSchedule
+      nodeSelector:
+        nodepool: stateless
+      containers:
+        - name: server
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            privileged: false
+            readOnlyRootFilesystem: true
+          image: us-central1-docker.pkg.dev/google-samples/microservices-demo/emailservice:v0.10.5
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: DISABLE_PROFILER
+              value: "1"
+          readinessProbe:
+            periodSeconds: 5
+            grpc:
+              port: 8080
+          livenessProbe:
+            periodSeconds: 5
+            grpc:
+              port: 8080
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: session-api
+  namespace: hotel
+spec:
+  type: ClusterIP
+  selector:
+    app: session-api
+  ports:
+    - name: grpc
+      port: 5000
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-ops-api
+  namespace: hotel
+  labels:
+    app: admin-ops-api
+    workload-tier: stateless
+    demo-maps-to: adservice
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: admin-ops-api
+  template:
+    metadata:
+      labels:
+        app: admin-ops-api
+        workload-tier: stateless
+    spec:
+      serviceAccountName: hotel-demo
+      terminationGracePeriodSeconds: 5
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      tolerations:
+        - key: workload-tier
+          operator: Equal
+          value: stateless
+          effect: NoSchedule
+      nodeSelector:
+        nodepool: stateless
+      containers:
+        - name: server
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            privileged: false
+            readOnlyRootFilesystem: true
+          image: us-central1-docker.pkg.dev/google-samples/microservices-demo/adservice:v0.10.5
+          ports:
+            - containerPort: 9555
+          env:
+            - name: PORT
+              value: "9555"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 180Mi
+            limits:
+              cpu: 300m
+              memory: 300Mi
+          readinessProbe:
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            grpc:
+              port: 9555
+          livenessProbe:
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            grpc:
+              port: 9555
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-ops-api
+  namespace: hotel
+spec:
+  type: ClusterIP
+  selector:
+    app: admin-ops-api
+  ports:
+    - name: grpc
+      port: 9555
+      targetPort: 9555
+---
+# =============================================================================
+# SUPPORTING SERVICES
+# =============================================================================
+# In-cluster Redis for cart sessions (POC only — production uses ElastiCache)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-cart
+  namespace: hotel
+  labels:
+    app: redis-cart
+spec:
+  selector:
+    matchLabels:
+      app: redis-cart
+  template:
+    metadata:
+      labels:
+        app: redis-cart
+    spec:
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: redis
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            privileged: false
+            readOnlyRootFilesystem: true
+          image: redis:7.4-alpine
+          ports:
+            - containerPort: 6379
+          readinessProbe:
+            periodSeconds: 5
+            tcpSocket:
+              port: 6379
+          livenessProbe:
+            periodSeconds: 5
+            tcpSocket:
+              port: 6379
+          volumeMounts:
+            - mountPath: /data
+              name: redis-data
+          resources:
+            requests:
+              cpu: 70m
+              memory: 200Mi
+            limits:
+              cpu: 125m
+              memory: 256Mi
+      volumes:
+        - name: redis-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cart
+  namespace: hotel
+spec:
+  type: ClusterIP
+  selector:
+    app: redis-cart
+  ports:
+    - name: tcp-redis
+      port: 6379
+      targetPort: 6379
+---
+# Load generator for realistic traffic
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-generator
+  namespace: hotel
+  labels:
+    app: load-generator
+spec:
+  selector:
+    matchLabels:
+      app: load-generator
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: load-generator
+    spec:
+      serviceAccountName: hotel-demo
+      terminationGracePeriodSeconds: 5
+      restartPolicy: Always
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      initContainers:
+        - name: frontend-check
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            privileged: false
+            readOnlyRootFilesystem: true
+          image: busybox:1.36
+          command:
+            - /bin/sh
+            - -exc
+            - |
+              MAX_RETRIES=12
+              RETRY_INTERVAL=10
+              for i in $(seq 1 $MAX_RETRIES); do
+                echo "Attempt $i: Pinging frontend: ${FRONTEND_ADDR}..."
+                STATUSCODE=$(wget --server-response http://${FRONTEND_ADDR} 2>&1 | awk '/^  HTTP/{print $2}')
+                if [ $STATUSCODE -eq 200 ]; then
+                    echo "Frontend is reachable."
+                    exit 0
+                fi
+                echo "Error: Could not reach frontend - Status code: ${STATUSCODE}"
+                sleep $RETRY_INTERVAL
+              done
+              echo "Failed to reach frontend after $MAX_RETRIES attempts."
+              exit 1
+          env:
+            - name: FRONTEND_ADDR
+              value: "public-api-bff:80"
+      containers:
+        - name: main
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            privileged: false
+            readOnlyRootFilesystem: true
+          image: us-central1-docker.pkg.dev/google-samples/microservices-demo/loadgenerator:v0.10.5
+          env:
+            - name: FRONTEND_ADDR
+              value: "public-api-bff:80"
+            - name: USERS
+              value: "10"
+            - name: RATE
+              value: "1"
+          resources:
+            requests:
+              cpu: 300m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
