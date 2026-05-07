@@ -3,18 +3,43 @@
 # Default deny + allow rules for inter-service communication
 # =============================================================================
 
-# Default deny all ingress traffic in hotel namespace
+# Default deny all ingress and egress traffic in hotel namespace
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: default-deny-ingress
+  name: default-deny
   namespace: hotel
 spec:
   podSelector: {}
   policyTypes:
     - Ingress
+    - Egress
 ---
-# Allow hotel-api to receive traffic from any pod in hotel namespace
+# Allow DNS and private VPC egress for AWS VPC endpoints, RDS, Redis, and internal services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-private-egress
+  namespace: hotel
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: ${VPC_CIDR}
+---
+# Allow hotel-api to receive traffic from hotel namespace pods and private VPC ingress
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -31,6 +56,8 @@ spec:
         - namespaceSelector:
             matchLabels:
               name: hotel
+        - ipBlock:
+            cidr: ${VPC_CIDR}
       ports:
         - protocol: TCP
           port: 8080

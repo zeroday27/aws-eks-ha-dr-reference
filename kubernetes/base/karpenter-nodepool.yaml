@@ -113,7 +113,7 @@ spec:
     - tags:
         karpenter.sh/discovery: ${KARPENTER_DISCOVERY_TAG}
 
-  role: ${KARPENTER_NODE_ROLE_NAME}
+  instanceProfile: ${KARPENTER_INSTANCE_PROFILE}
 
   metadataOptions:
     httpEndpoint: enabled

@@ -1,6 +1,6 @@
 project_name         = "hotel"
 environment          = "dev"
-cluster_version      = "1.31"
+cluster_version      = "1.34"
 network_state_bucket = "tf-state-nico-remote-backend"
 network_state_key    = "dev/stacks/network/terraform.tfstate"
 state_region         = "ap-southeast-1"

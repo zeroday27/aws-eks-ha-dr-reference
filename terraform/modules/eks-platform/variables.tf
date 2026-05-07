@@ -2,7 +2,7 @@ variable "project_name" { type = string }
 variable "environment" { type = string }
 variable "cluster_version" {
   type    = string
-  default = "1.29"
+  default = "1.34"
 }
 variable "vpc_id" { type = string }
 variable "vpc_cidr" { type = string }
@@ -30,4 +30,9 @@ variable "system_node_min_size" {
 variable "system_node_max_size" {
   type    = number
   default = 6
+}
+variable "workload_service_accounts" {
+  description = "Fully-qualified Kubernetes service account subjects allowed to assume the workload IRSA role"
+  type        = list(string)
+  default     = ["system:serviceaccount:hotel:hotel-app"]
 }

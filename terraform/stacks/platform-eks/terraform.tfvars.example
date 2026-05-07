@@ -1,6 +1,6 @@
 project_name         = "hotel"
 environment          = "prod"
-cluster_version      = "1.29"
+cluster_version      = "1.34"
 network_state_bucket = "example-hotel-tfstate"
 network_state_key    = "prod/stacks/network/terraform.tfstate"
 state_region         = "ap-southeast-1"

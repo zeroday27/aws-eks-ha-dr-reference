@@ -204,8 +204,9 @@ resource "aws_iam_role" "workload_irsa" {
       }
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
-        StringLike = {
-          "${replace(aws_iam_openid_connect_provider.this.url, "https://", "")}:sub" = "system:serviceaccount:hotel:*"
+        StringEquals = {
+          "${replace(aws_iam_openid_connect_provider.this.url, "https://", "")}:aud" = "sts.amazonaws.com"
+          "${replace(aws_iam_openid_connect_provider.this.url, "https://", "")}:sub" = var.workload_service_accounts
         }
       }
     }]

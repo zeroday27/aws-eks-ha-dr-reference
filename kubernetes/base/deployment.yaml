@@ -2,6 +2,13 @@
 # Hotel Platform - Kubernetes Deployment
 # High Availability Configuration with Multi-AZ Distribution
 # =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hotel
+  labels:
+    name: hotel
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -201,13 +208,3 @@ metadata:
   namespace: hotel
   annotations:
     eks.amazonaws.com/role-arn: ${WORKLOAD_IRSA_ROLE_ARN}
----
-# =============================================================================
-# Namespace
-# =============================================================================
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: hotel
-  labels:
-    name: hotel

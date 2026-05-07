@@ -62,11 +62,6 @@ jobs:
           curl -sSL https://raw.githubusercontent.com/open-policy-agent/conftest/master/install.sh | sh
           sudo mv conftest /usr/local/bin/conftest
 
-      - name: Generate Terraform plan JSON
-        working-directory: ${{ matrix.stack }}
-        run: |
-          terraform plan -out=tfplan -input=false 2>/dev/null || true
-          terraform show -json tfplan > plan.json 2>/dev/null || echo '{}' > plan.json
 
       - name: Run OPA policy checks
-        run: conftest test ${{ matrix.stack }}/plan.json --policy policy/terraform
+        run: conftest test $(git ls-files '${{ matrix.stack }}/**/*.tf') --parser hcl2 --policy policy/terraform
